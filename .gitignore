@@ -1,0 +1,7 @@
+# Exclude the environment
+env/
+
+# Exclude python cache
+__pycache__/
+.mypy_cache/
+
