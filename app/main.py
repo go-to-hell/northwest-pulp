@@ -1,6 +1,13 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from pydantic import BaseModel
 from pulp import *
+
+origins = [
+    "http://localhost",
+    "http://localhost:5173",
+]
 
 class TransportationProblem(BaseModel):
     Origins: list[str]
@@ -10,6 +17,14 @@ class TransportationProblem(BaseModel):
     costs: list[list[int]]
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def root():
@@ -58,5 +73,7 @@ async def transportation_problem(tp: TransportationProblem, maximize: bool = Fal
                 s: route_vars[w][s].varValue
                 for s in tp.Targets
             } for w in tp.Origins
-        }
+        },
+        "origins": tp.Origins,
+        "targets": tp.Targets,
     }
