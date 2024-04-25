@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import networkx as nx
 
 from pydantic import BaseModel
 from pulp import *
@@ -15,6 +16,10 @@ class TransportationProblem(BaseModel):
     supply: dict[str, int]
     demand: dict[str, int]
     costs: list[list[int]]
+
+class GraphData(BaseModel):
+    nodes: dict
+    edges: dict
 
 app = FastAPI()
 
@@ -77,3 +82,31 @@ async def transportation_problem(tp: TransportationProblem, maximize: bool = Fal
         "origins": tp.Origins,
         "targets": tp.Targets,
     }
+
+def create_graph(data):
+    G = nx.Graph()
+    for node in data['nodes'].values():
+        G.add_node(node['id'])
+    for edge_id, edge in data['edges'].items():
+        G.add_edge(edge['source'], edge['target'], weight=int(edge['label']), id=edge_id)
+    return G
+
+def create_data(G):
+    edges = {edge[2]['id']: {"source": edge[0], "target": edge[1], "label": str(edge[2]['weight'])} for edge in G.edges(data=True)}
+    return {"edges": edges}
+
+def find_spanning_tree(data, maximize=False):
+    G = create_graph(data)
+    T = nx.maximum_spanning_tree(G, weight='weight') if maximize else nx.minimum_spanning_tree(G, weight='weight')
+    return create_data(T)
+
+def create_paths(data):
+    paths = {f"path{i+1}": {"edges": [edge]} for i, edge in enumerate(data['edges'].keys())}
+    return paths
+
+
+@app.post("/spanning_tree/")
+async def spanning_tree(data: GraphData, maximize: bool = False):
+    data_mst = find_spanning_tree(data.dict(), maximize)
+    paths = create_paths(data_mst)
+    return {"data_mst": data_mst, "paths": paths}
