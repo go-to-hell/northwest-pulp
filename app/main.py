@@ -5,6 +5,8 @@ import networkx as nx
 from pydantic import BaseModel
 from pulp import *
 
+import heapq
+
 origins = [
     "http://localhost",
     "http://localhost:5173",
@@ -33,7 +35,7 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    return {"message": "Te conectaste correctamente a la API de transporte."}
+    return {"message": "Te conectaste correctamente a la API de Algoritmos.\nPara ver la API navegable entra al endpoint /docs."}
 
 @app.post("/transportation/")
 async def transportation_problem(tp: TransportationProblem, maximize: bool = False):
@@ -83,6 +85,8 @@ async def transportation_problem(tp: TransportationProblem, maximize: bool = Fal
         "targets": tp.Targets,
     }
 
+### KRUSKAL MST ###
+
 def create_graph(data):
     G = nx.Graph()
     for node in data['nodes'].values():
@@ -110,3 +114,85 @@ async def spanning_tree(data: GraphData, maximize: bool = False):
     data_mst = find_spanning_tree(data.dict(), maximize)
     paths = create_paths(data_mst)
     return {"data_mst": data_mst, "paths": paths}
+
+
+### DIJKSTRA SHORTEST PATH ###
+
+def dijkstra(graph, start_node, maximize=False):
+    return max_route(graph, start_node) if maximize else min_route(graph, start_node)
+    
+def min_route(graph, start_node):
+    # Initialize dictionaries to store minimum distances and visited nodes
+    distances = {node: float('inf') for node in graph['nodes']}
+    distances[start_node] = 0
+    visited = set()
+    
+    # Initialize dictionary to store edges included in shortest path
+    shortest_edges = {edge_id: False for edge_id in graph['edges']}
+    
+    # Priority queue (min heap) to store nodes and their distances
+    pq = [(0, start_node)]
+    
+    while pq:
+        # Pop the node with the smallest distance
+        distance, current_node = heapq.heappop(pq)
+        
+        # Skip if node is already visited
+        if current_node in visited:
+            continue
+        
+        visited.add(current_node)
+        
+        # Update distances and shortest edges for neighboring nodes
+        for edge_id, edge in graph['edges'].items():
+            if edge['source'] == current_node:
+                neighbor = edge['target']
+                new_distance = distances[current_node] + edge['label']
+                if new_distance < distances[neighbor]:
+                    distances[neighbor] = new_distance
+                    shortest_edges[edge_id] = True
+                    heapq.heappush(pq, (new_distance, neighbor))
+    
+    return {'nodes': distances, 'edges': shortest_edges}
+
+def max_route(graph, start_node):
+    # Initialize dictionaries to store maximum distances and visited nodes
+    max_distances = {node: float('-inf') for node in graph['nodes']}
+    max_distances[start_node] = 0
+    visited = set()
+    
+    # Initialize dictionary to store edges included in maximum path
+    max_edges = {edge_id: False for edge_id in graph['edges']}
+    
+    # Priority queue (min heap) to store nodes and their distances
+    pq = [(0, start_node)]
+    
+    while pq:
+        # Pop the node with the largest distance
+        distance, current_node = heapq.heappop(pq)
+        
+        # Skip if node is already visited
+        if current_node in visited:
+            continue
+        
+        visited.add(current_node)
+        
+        # Update maximum distances and maximum edges for neighboring nodes
+        for edge_id, edge in graph['edges'].items():
+            if edge['source'] == current_node:
+                neighbor = edge['target']
+                new_distance = max_distances[current_node] + edge['label']
+                if new_distance > max_distances[neighbor]:
+                    max_distances[neighbor] = new_distance
+                    max_edges[edge_id] = True
+                    heapq.heappush(pq, (-new_distance, neighbor))
+    
+    return {'nodes': max_distances, 'edges': max_edges}
+
+@app.post("/dijkstra/")
+async def dijkstra_shortest_path(data: GraphData, start_node: str, maximize: bool = False):
+    result = dijkstra(data.dict(), start_node, maximize)
+    # Filter edges mapped to true
+    result['edges'] = {edge_id: edge for edge_id, edge in result['edges'].items() if edge}
+    result["edges"] = create_paths(result)
+    return result
