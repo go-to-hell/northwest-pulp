@@ -154,6 +154,9 @@ def min_route(graph, start_node):
                     heapq.heappush(pq, (new_distance, neighbor))
 
     # Set any remaining unvisited nodes to -1
+    for node in graph['nodes']:
+        if node not in visited:
+            distances[node] = -1
     
     return {'nodes': distances, 'edges': shortest_edges}
 
