@@ -152,6 +152,8 @@ def min_route(graph, start_node):
                     distances[neighbor] = new_distance
                     shortest_edges[edge_id] = True
                     heapq.heappush(pq, (new_distance, neighbor))
+
+    # Set any remaining unvisited nodes to -1
     
     return {'nodes': distances, 'edges': shortest_edges}
 
@@ -186,6 +188,11 @@ def max_route(graph, start_node):
                     max_distances[neighbor] = new_distance
                     max_edges[edge_id] = True
                     heapq.heappush(pq, (-new_distance, neighbor))
+
+    # Set any remaining unvisited nodes to -1
+    for node in graph['nodes']:
+        if node not in visited:
+            max_distances[node] = -1
     
     return {'nodes': max_distances, 'edges': max_edges}
 
