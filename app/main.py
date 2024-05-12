@@ -118,10 +118,10 @@ async def spanning_tree(data: GraphData, maximize: bool = False):
 
 ### DIJKSTRA SHORTEST PATH ###
 
-def dijkstra(graph, start_node, maximize=False):
-    return max_route(graph, start_node) if maximize else min_route(graph, start_node)
+def dijkstra(graph, start_node, end_node, maximize=False):
+    return max_route(graph, start_node, end_node=end_node) if maximize else min_route(graph, start_node, end_node=end_node)
     
-def min_route(graph, start_node):
+def min_route(graph, start_node, end_node=None):
     # Initialize dictionaries to store minimum distances and visited nodes
     distances = {node: float('inf') for node in graph['nodes']}
     distances[start_node] = 0
@@ -150,17 +150,44 @@ def min_route(graph, start_node):
                 new_distance = distances[current_node] + edge['label']
                 if new_distance < distances[neighbor]:
                     distances[neighbor] = new_distance
-                    shortest_edges[edge_id] = True
+                    #shortest_edges[edge_id] = True
                     heapq.heappush(pq, (new_distance, neighbor))
 
     # Set any remaining unvisited nodes to -1
     for node in graph['nodes']:
         if node not in visited:
             distances[node] = -1
+
+    # If the end node is specified, calculate the shortest path from start to end
+    print("Calculating path from", start_node, "to", end_node)
+    print(distances[end_node])
+    timeout = 20
+    if end_node and distances[end_node] != -1:
+        path = []
+        current_node = end_node
+        while current_node != start_node:
+            timeout -= 1
+            for edge_id, edge in graph['edges'].items():
+                if edge['target'] != current_node or distances[edge['source']] == -1:
+                    continue
+                print("current_node", current_node)
+                print("Checking edge", edge_id, "from", edge['source'], "to", edge['target'], "with label", edge['label'])
+                timeout -= 1
+                if timeout == 0:
+                    raise Exception("Timeout")
+                print("distances[current_node]", distances[current_node])
+                print("distances[edge['source']]", distances[edge['source']])
+                if distances[current_node] == distances[edge['source']] + edge['label']:
+                    path.append(edge_id)
+                    current_node = edge['source']
+                    break
+        path.reverse()
+        for edge_id in path:
+            shortest_edges[edge_id] = True
     
     return {'nodes': distances, 'edges': shortest_edges}
 
-def max_route(graph, start_node):
+def max_route(graph, start_node, end_node=None):
     # Initialize dictionaries to store maximum distances and visited nodes
     max_distances = {node: float('-inf') for node in graph['nodes']}
     max_distances[start_node] = 0
@@ -189,19 +216,47 @@ def max_route(graph, start_node):
                 new_distance = max_distances[current_node] + edge['label']
                 if new_distance > max_distances[neighbor]:
                     max_distances[neighbor] = new_distance
-                    max_edges[edge_id] = True
                     heapq.heappush(pq, (-new_distance, neighbor))
 
     # Set any remaining unvisited nodes to -1
     for node in graph['nodes']:
         if node not in visited:
             max_distances[node] = -1
+
+    # If end node is specified, calculate the maximum path from start to end
+    print("Calculating path from", start_node, "to", end_node)
+    print(max_distances[end_node])  
+    timeout = 1000
+    if end_node and max_distances[end_node] != -1:
+        path = []
+        current_node = end_node
+        while current_node != start_node:
+            timeout -= 1
+            for edge_id, edge in graph['edges'].items():
+                if edge['target'] != current_node or max_distances[edge['source']] == -1:
+                    continue
+                print("current_node", current_node)
+                print("Checking edge", edge_id, "from", edge['source'], "to", edge['target'], "with label", edge['label'])
+                timeout -= 1
+                if timeout == 0:
+                    raise Exception("Timeout")
+                print("max_distances[current_node]", max_distances[current_node])
+                print("max_distances[edge['source']]", max_distances[edge['source']])
+                if max_distances[current_node] == max_distances[edge['source']] + edge['label']:
+                    path.append(edge_id)
+                    current_node = edge['source']
+                    break
+        path.reverse()
+        for edge_id in path:
+            max_edges[edge_id] = True
+
     
     return {'nodes': max_distances, 'edges': max_edges}
 
 @app.post("/dijkstra/")
-async def dijkstra_shortest_path(data: GraphData, start_node: str, maximize: bool = False):
-    result = dijkstra(data.dict(), start_node, maximize)
+async def dijkstra_shortest_path(data: GraphData, start_node: str, end_node: str, maximize: bool = False):
+    print("3 Calculating path from", start_node, "to", end_node)
+    result = dijkstra(data.dict(), start_node, end_node, maximize)
     # Filter edges mapped to true
     result['edges'] = {edge_id: edge for edge_id, edge in result['edges'].items() if edge}
     result["edges"] = create_paths(result)
