@@ -5,7 +5,7 @@ import networkx as nx
 from pydantic import BaseModel
 from pulp import *
 
-import heapq
+from collections import deque
 
 origins = [
     "http://localhost",
@@ -131,17 +131,29 @@ def min_route(graph, start_node, end_node=None):
     shortest_edges = {edge_id: False for edge_id in graph['edges']}
     
     # Priority queue (min heap) to store nodes and their distances
-    pq = [(0, start_node)]
+    dq = deque()
+    dq.append((0, start_node))
     
-    while pq:
+    while dq:
         # Pop the node with the smallest distance
-        distance, current_node = heapq.heappop(pq)
+        distance, current_node = dq.popleft()
         
         # Skip if node is already visited
         if current_node in visited:
             continue
         
         visited.add(current_node)
+
+        # if an edge has target == current_node but source is not visited, we requeue the node
+        for edge_id, edge in graph['edges'].items():
+            if edge['target'] == current_node and edge['source'] not in visited:
+                dq.append((distance, edge['source']))
+                # remove the node from visited
+                visited.remove(current_node)
+                break
+
+        if current_node not in visited:
+            continue
         
         # Update distances and shortest edges for neighboring nodes
         for edge_id, edge in graph['edges'].items():
@@ -151,7 +163,7 @@ def min_route(graph, start_node, end_node=None):
                 if new_distance < distances[neighbor]:
                     distances[neighbor] = new_distance
                     #shortest_edges[edge_id] = True
-                    heapq.heappush(pq, (new_distance, neighbor))
+                    dq.append((new_distance, neighbor))
 
     # Set any remaining unvisited nodes to -1
     for node in graph['nodes']:
@@ -197,26 +209,49 @@ def max_route(graph, start_node, end_node=None):
     max_edges = {edge_id: False for edge_id in graph['edges']}
     
     # Priority queue (min heap) to store nodes and their distances
-    pq = [(0, start_node)]
+    dq = deque()
+    dq.append((0, start_node))
+
+    timeout1 = 20 
     
-    while pq:
+    while dq:
         # Pop the node with the largest distance
-        distance, current_node = heapq.heappop(pq)
+        distance, current_node = dq.popleft()
+
+        print("we are in node", current_node)
+        timeout1 -= 1
+        if timeout1 == 0:
+            raise Exception("Timeout")
         
         # Skip if node is already visited
         if current_node in visited:
+            print("node is already visited so we skip it")
             continue
-        
+
         visited.add(current_node)
+
+        # if an edge has target == current_node but source is not visited, we requeue the node
+        for edge_id, edge in graph['edges'].items():
+            if edge['target'] == current_node and edge['source'] not in visited:
+                print("requeueing node", edge['target'])
+                dq.append((distance, edge['source']))
+                # remove the node from visited
+                visited.remove(current_node)
+                break
+
+        if current_node not in visited:
+            continue
         
         # Update maximum distances and maximum edges for neighboring nodes
         for edge_id, edge in graph['edges'].items():
             if edge['source'] == current_node:
                 neighbor = edge['target']
                 new_distance = max_distances[current_node] + edge['label']
+                print("new_distance", new_distance, "between", current_node, "and", neighbor)
                 if new_distance > max_distances[neighbor]:
+                    print("new_distance is greater than max_distance[neighbor]", max_distances[neighbor])
                     max_distances[neighbor] = new_distance
-                    heapq.heappush(pq, (-new_distance, neighbor))
+                    dq.append((new_distance, neighbor))
 
     # Set any remaining unvisited nodes to -1
     for node in graph['nodes']:
@@ -226,7 +261,7 @@ def max_route(graph, start_node, end_node=None):
     # If end node is specified, calculate the maximum path from start to end
     print("Calculating path from", start_node, "to", end_node)
     print(max_distances[end_node])  
-    timeout = 1000
+    timeout = 20
     if end_node and max_distances[end_node] != -1:
         path = []
         current_node = end_node
@@ -261,3 +296,65 @@ async def dijkstra_shortest_path(data: GraphData, start_node: str, end_node: str
     result['edges'] = {edge_id: edge for edge_id, edge in result['edges'].items() if edge}
     result["edges"] = create_paths(result)
     return result
+
+def VerticesEdgesToAdjacencyList(VEGraph):
+    """
+    Convert a graph from a list of vertices and edges to an adjacency list
+    Input object JSON
+    {
+        "nodes":{
+            "nodeId":{
+                "id": "nodeId",
+                "name": "nodeName"
+            },
+            ...
+        },
+        "edges":{
+            "edgeId":{
+                "id": "edgeId",
+                "source": "sourceNodeId",
+                "target": "targetNodeId",
+                "label": "edgeLabel"
+            },
+            ...
+        }
+    }
+
+    Expected output object JSON
+    {
+        "nodeId":{
+            "neighbors":{
+                "neighborNodeId": {
+                    "edgeId": "edgeId",
+                    "label": "edgeLabel"
+                },
+                ...
+            },
+            "name": "nodeName"
+        }
+    }
+
+    A neighbor is defined as a node that is reachable from the source node of an edge to the target node of that edge
+    """
+
+    adjacencyList = {}
+    for nodeId, node in VEGraph['nodes'].items():
+        adjacencyList[nodeId] = {
+            "neighbors": {},
+            "name": node['name']
+        }
+    
+    for edgeId, edge in VEGraph['edges'].items():
+        sourceNode = edge['source']
+        targetNode = edge['target']
+        adjacencyList[sourceNode]['neighbors'][targetNode] = {
+            "edgeId": edgeId,
+            "label": edge['label']
+        }
+
+    print("Adjacency List: \n", adjacencyList)
+    return adjacencyList
+
+@app.post("/adjacency_list/")
+async def adjacency_list(VEGraph: GraphData):
+    return VerticesEdgesToAdjacencyList(VEGraph.dict())
