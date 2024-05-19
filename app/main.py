@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import networkx as nx
 
@@ -116,187 +116,6 @@ async def spanning_tree(data: GraphData, maximize: bool = False):
     return {"data_mst": data_mst, "paths": paths}
 
 
-### DIJKSTRA SHORTEST PATH ###
-
-def dijkstra(graph, start_node, end_node, maximize=False):
-    return max_route(graph, start_node, end_node=end_node) if maximize else min_route(graph, start_node, end_node=end_node)
-    
-def min_route(graph, start_node, end_node=None):
-    # Initialize dictionaries to store minimum distances and visited nodes
-    distances = {node: float('inf') for node in graph['nodes']}
-    distances[start_node] = 0
-    visited = set()
-    
-    # Initialize dictionary to store edges included in shortest path
-    shortest_edges = {edge_id: False for edge_id in graph['edges']}
-    
-    # Priority queue (min heap) to store nodes and their distances
-    dq = deque()
-    dq.append((0, start_node))
-    
-    while dq:
-        # Pop the node with the smallest distance
-        distance, current_node = dq.popleft()
-        
-        # Skip if node is already visited
-        if current_node in visited:
-            continue
-        
-        visited.add(current_node)
-
-        # if an edge has target == current_node but source is not visited, we requeue the node
-        for edge_id, edge in graph['edges'].items():
-            if edge['target'] == current_node and edge['source'] not in visited:
-                dq.append((distance, edge['source']))
-                # remove the node from visited
-                visited.remove(current_node)
-                break
-
-        if current_node not in visited:
-            continue
-        
-        # Update distances and shortest edges for neighboring nodes
-        for edge_id, edge in graph['edges'].items():
-            if edge['source'] == current_node:
-                neighbor = edge['target']
-                new_distance = distances[current_node] + edge['label']
-                if new_distance < distances[neighbor]:
-                    distances[neighbor] = new_distance
-                    #shortest_edges[edge_id] = True
-                    dq.append((new_distance, neighbor))
-
-    # Set any remaining unvisited nodes to -1
-    for node in graph['nodes']:
-        if node not in visited:
-            distances[node] = -1
-
-    # If the end node is specified, calculate the shortest path from start to end
-    print("Calculating path from", start_node, "to", end_node)
-    print(distances[end_node])
-    timeout = 20
-    if end_node and distances[end_node] != -1:
-        path = []
-        current_node = end_node
-        while current_node != start_node:
-            timeout -= 1
-            for edge_id, edge in graph['edges'].items():
-                if edge['target'] != current_node or distances[edge['source']] == -1:
-                    continue
-                print("current_node", current_node)
-                print("Checking edge", edge_id, "from", edge['source'], "to", edge['target'], "with label", edge['label'])
-                timeout -= 1
-                if timeout == 0:
-                    raise Exception("Timeout")
-                print("distances[current_node]", distances[current_node])
-                print("distances[edge['source']]", distances[edge['source']])
-                if distances[current_node] == distances[edge['source']] + edge['label']:
-                    path.append(edge_id)
-                    current_node = edge['source']
-                    break
-        path.reverse()
-        for edge_id in path:
-            shortest_edges[edge_id] = True
-    
-    return {'nodes': distances, 'edges': shortest_edges}
-
-def max_route(graph, start_node, end_node=None):
-    # Initialize dictionaries to store maximum distances and visited nodes
-    max_distances = {node: float('-inf') for node in graph['nodes']}
-    max_distances[start_node] = 0
-    visited = set()
-    
-    # Initialize dictionary to store edges included in maximum path
-    max_edges = {edge_id: False for edge_id in graph['edges']}
-    
-    # Priority queue (min heap) to store nodes and their distances
-    dq = deque()
-    dq.append((0, start_node))
-
-    timeout1 = 20 
-    
-    while dq:
-        # Pop the node with the largest distance
-        distance, current_node = dq.popleft()
-
-        print("we are in node", current_node)
-        timeout1 -= 1
-        if timeout1 == 0:
-            raise Exception("Timeout")
-        
-        # Skip if node is already visited
-        if current_node in visited:
-            print("node is already visited so we skip it")
-            continue
-
-        visited.add(current_node)
-
-        # if an edge has target == current_node but source is not visited, we requeue the node
-        for edge_id, edge in graph['edges'].items():
-            if edge['target'] == current_node and edge['source'] not in visited:
-                print("requeueing node", edge['target'])
-                dq.append((distance, edge['source']))
-                # remove the node from visited
-                visited.remove(current_node)
-                break
-
-        if current_node not in visited:
-            continue
-        
-        # Update maximum distances and maximum edges for neighboring nodes
-        for edge_id, edge in graph['edges'].items():
-            if edge['source'] == current_node:
-                neighbor = edge['target']
-                new_distance = max_distances[current_node] + edge['label']
-                print("new_distance", new_distance, "between", current_node, "and", neighbor)
-                if new_distance > max_distances[neighbor]:
-                    print("new_distance is greater than max_distance[neighbor]", max_distances[neighbor])
-                    max_distances[neighbor] = new_distance
-                    dq.append((new_distance, neighbor))
-
-    # Set any remaining unvisited nodes to -1
-    for node in graph['nodes']:
-        if node not in visited:
-            max_distances[node] = -1
-
-    # If end node is specified, calculate the maximum path from start to end
-    print("Calculating path from", start_node, "to", end_node)
-    print(max_distances[end_node])  
-    timeout = 20
-    if end_node and max_distances[end_node] != -1:
-        path = []
-        current_node = end_node
-        while current_node != start_node:
-            timeout -= 1
-            for edge_id, edge in graph['edges'].items():
-                if edge['target'] != current_node or max_distances[edge['source']] == -1:
-                    continue
-                print("current_node", current_node)
-                print("Checking edge", edge_id, "from", edge['source'], "to", edge['target'], "with label", edge['label'])
-                timeout -= 1
-                if timeout == 0:
-                    raise Exception("Timeout")
-                print("max_distances[current_node]", max_distances[current_node])
-                print("max_distances[edge['source']]", max_distances[edge['source']])
-                if max_distances[current_node] == max_distances[edge['source']] + edge['label']:
-                    path.append(edge_id)
-                    current_node = edge['source']
-                    break
-        path.reverse()
-        for edge_id in path:
-            max_edges[edge_id] = True
-
-    
-    return {'nodes': max_distances, 'edges': max_edges}
-
-@app.post("/dijkstra/")
-async def dijkstra_shortest_path(data: GraphData, start_node: str, end_node: str, maximize: bool = False):
-    print("3 Calculating path from", start_node, "to", end_node)
-    result = dijkstra(data.dict(), start_node, end_node, maximize)
-    # Filter edges mapped to true
-    result['edges'] = {edge_id: edge for edge_id, edge in result['edges'].items() if edge}
-    result["edges"] = create_paths(result)
-    return result
-
 def VerticesEdgesToAdjacencyList(VEGraph):
     """
     Convert a graph from a list of vertices and edges to an adjacency list
@@ -345,6 +164,9 @@ def VerticesEdgesToAdjacencyList(VEGraph):
         }
     
     for edgeId, edge in VEGraph['edges'].items():
+        if type(edge['label']) == str:
+            print("Warning: Edge label is a string, converting to int")
+            edge['label'] = int(edge['label'])
         sourceNode = edge['source']
         targetNode = edge['target']
         adjacencyList[sourceNode]['neighbors'][targetNode] = {
@@ -358,3 +180,85 @@ def VerticesEdgesToAdjacencyList(VEGraph):
 @app.post("/adjacency_list/")
 async def adjacency_list(VEGraph: GraphData):
     return VerticesEdgesToAdjacencyList(VEGraph.dict())
+
+## Dijktra's algorithm ##
+
+def dijkstra(graph, startNode, maximize = False):
+    """
+    Given a graph in Adjacency List format, a start node, and a maximize boolean value, calculate the shortest/longest path from the start node to all other nodes in the graph.
+
+    Expected output format
+    {
+        "nodeId": {
+            "distance": distance,
+            "path": [path]
+        },
+        ...
+    }
+    """
+
+    # Initialize the distance and path dictionaries
+    if maximize:
+        distance = {node: float('-infinity') for node in graph}
+    else:
+        distance = {node: float('infinity') for node in graph}
+    distance[startNode] = 0
+    path = {node: [] for node in graph}
+
+    # Create a queue to keep track of the nodes that need to be visited
+    queue = deque([startNode])
+    timeout = 125
+    node = None
+
+    # While the queue is not empty
+    while queue:
+        print("current queue: ", queue)
+        print("current node: ", node)
+        timeout -= 1
+        if timeout == 0:
+            print("Timeout")
+            raise Exception("Timeout")
+        # Get the first node in the queue
+        node = queue.popleft()
+
+        
+        
+
+        # Get the neighbors of the node
+        for neighbor, edge in graph[node]['neighbors'].items():
+            # Calculate the new distance
+            newDistance = distance[node] + edge['label']
+
+            # If the new distance is shorter/longer than the current distance
+            if (maximize and newDistance > distance[neighbor]) or (not maximize and newDistance < distance[neighbor]):
+                print("current path to ", neighbor, " is ", path[neighbor])
+                # To prevent an infinite loop in maximizations, if the path to a node contains the same edge, skip it
+                if edge['edgeId'] in path[neighbor]:
+                    continue
+                # Update the distance
+                distance[neighbor] = newDistance
+                # Update the path
+                path[neighbor] = path[node] + [edge['edgeId']]
+                # Add the neighbor to the queue
+                queue.append(neighbor)
+
+    # Any remaining nodes in the queue are unreachable from the start node, their distance will be set to -1
+    for nodeid, node in graph.items():
+        if distance[nodeid] == float('infinity'):
+            distance[nodeid] = -1
+
+    # Return the distance and path dictionaries
+    return {node: {"distance": distance[node], "path": path[node]} for node in graph}
+
+@app.post("/dijkstra/")
+async def dijkstra_algorithm(VEGraph: GraphData, startNode: str, endNode: Optional[str] = None, maximize: bool = False):
+    try:
+        graph = VerticesEdgesToAdjacencyList(VEGraph.dict())
+        dijkstraresult = dijkstra(graph, startNode, maximize)
+        result = {"nodes": dijkstraresult}
+        if endNode:
+            result["targetPath"] = create_paths({"edges": {edgeid: 0 for edgeid in dijkstraresult[endNode]["path"]}})
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
