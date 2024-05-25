@@ -12,6 +12,21 @@ origins = [
     "http://localhost:5173",
 ]
 
+card_mappings = {
+    "regular": {
+        "price": 2.0,
+        "transfer": 1.0
+    },
+    "student": {
+        "price": 1.5,
+        "transfer": 1.0
+    },
+    "senior": {
+        "price": 1.0,
+        "transfer": 1.0
+    }
+}
+
 class TransportationProblem(BaseModel):
     Origins: list[str]
     Targets: list[str]
@@ -258,6 +273,48 @@ async def dijkstra_algorithm(VEGraph: GraphData, startNode: str, endNode: Option
         result = {"nodes": dijkstraresult}
         if endNode:
             result["targetPath"] = create_paths({"edges": {edgeid: 0 for edgeid in dijkstraresult[endNode]["path"]}})
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def calculate_prices(graph, cardtype):
+    # TODO: A paritr del tipo de tarjeta se deben llenar los precios de los nodos, conmsiderando
+    # las tarifas de transferencia y las excepciones en las líenas celeste y plateada
+    pass
+
+def secondsToTime(seconds):
+    # TODO: Convertir los segundos a un string en formato MM:SS
+    pass
+
+@app.post("/dijkstra/telefericos")
+async def dijkstra_algorithm_telefericos(
+    VEGraph: GraphData, 
+    startNode: str, 
+    maximize: bool = False, 
+    cardtype: str = "regular",
+    timeOrMoney: str = "time"):
+    """
+    TODO: Esta función fue generada con IA, se debe completar el código para que funcione correctamente.
+    Según el usuario requiera optimizar por tiempo o por dinero, se debe calcular el costo de los nodos.
+    En el caso de costo por dinero se debe convertir el grafo a un grafo ponderado por el precio de la tarjeta. Esto es última prioridad
+    En el caso de costo por tiempo es necesario al resultado de dijkstra convertir los segundos a un string en formato MM:SS
+    En ambos casos se debe retornar adicionalmente el costo óptimo de la ruta
+    """
+    try:
+        graph = VerticesEdgesToAdjacencyList(VEGraph.dict())
+        dijkstraresult = dijkstra(graph, startNode, maximize)
+        result = {"nodes": dijkstraresult} # esta es la solución básica de Dijkstra
+        if timeOrMoney == "money":
+            for nodeid, node in dijkstraresult.items():
+                if node["distance"] != -1:
+                    node["distance"] = node["distance"] * card_mappings[cardtype]["price"]
+        if timeOrMoney == "time":
+            for nodeid, node in dijkstraresult.items():
+                if node["distance"] != -1:
+                    node["distance"] = node["distance"] / card_mappings[cardtype]["transfer"]
+
+        # TODO Añadir lo indicado a la variable result
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
