@@ -284,13 +284,15 @@ def calculate_prices(graph, cardtype):
     pass
 
 def secondsToTime(seconds):
-    # TODO: Convertir los segundos a un string en formato MM:SS
-    pass
+    minutes = seconds // 60
+    seconds = seconds % 60
+    return f"{minutes:02d}:{seconds:02d}"
 
 @app.post("/dijkstra/telefericos")
 async def dijkstra_algorithm_telefericos(
     VEGraph: GraphData, 
     startNode: str, 
+    endNode: str,
     maximize: bool = False, 
     cardtype: str = "regular",
     timeOrMoney: str = "time"):
@@ -311,8 +313,14 @@ async def dijkstra_algorithm_telefericos(
                     node["distance"] = node["distance"] * card_mappings[cardtype]["price"]
         if timeOrMoney == "time":
             for nodeid, node in dijkstraresult.items():
+                # cast seconds to MM:SS
                 if node["distance"] != -1:
-                    node["distance"] = node["distance"] / card_mappings[cardtype]["transfer"]
+                    node["distance"] = secondsToTime(node["distance"])
+
+            # append optimal value to result
+            result["optimalValue"] = dijkstraresult[endNode]["distance"]
+            result["optimalPath"] = create_paths({"edges": {edgeid: 0 for edgeid in dijkstraresult[endNode]["path"]}})
+
 
         # TODO Añadir lo indicado a la variable result
         return result
