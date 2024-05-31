@@ -333,6 +333,7 @@ def disable_lines(graph, unavailable_lines):
     Based on the `paradas` dictionary, disable the lines that are not available, by removing the edges that belong to the unavailable lines but not the nodes.
     """
     result = {}
+    disabled_edges_ids = []
 
     for nodeid, node in graph.items():
         for neighborid, neighbor in node['neighbors'].items():
@@ -350,6 +351,8 @@ def disable_lines(graph, unavailable_lines):
                         "name": node['name']
                     }
                 result[nodeid]['neighbors'][neighborid] = neighbor
+            else:
+                disabled_edges_ids.append(neighbor['edgeId'])
 
     # Add all nodes that are not connected to any other node
     for nodeid, node in graph.items():
@@ -359,10 +362,11 @@ def disable_lines(graph, unavailable_lines):
                 "name": node['name']
             }
 
-    return result
+    return result, disabled_edges_ids
 
 
 def secondsToTime(seconds):
+    # print("seconds to time", seconds)
     minutes = seconds // 60
     seconds = seconds % 60
     return f"{minutes:02d}:{seconds:02d}"
@@ -441,7 +445,7 @@ async def dijkstra_algorithm_telefericos(
         graph = VerticesEdgesToAdjacencyList(VEGraph.dict())
 
         print("Disabling lines", disabledLines)
-        graph = disable_lines(graph, disabledLines)
+        graph, disabled_edges_ids = disable_lines(graph, disabledLines)
         print("Resulting graph: ", graph)
 
         if targetVariable == "energy":
@@ -464,18 +468,11 @@ async def dijkstra_algorithm_telefericos(
                 if node["distance"] != -1:
                     node["distance"] = f"${node['distance']:.2f}"
 
-            # append optimal value to result
-            result["optimalValue"] = f"${dijkstraresult[endNode]['distance']:.2f}"
-
-            
         if targetVariable == "time":
             for nodeid, node in dijkstraresult.items():
                 # cast seconds to MM:SS
                 if node["distance"] != -1:
-                    node["distance"] = secondsToTime(node["distance"])
-
-            # append optimal value to result
-            result["optimalValue"] = secondsToTime(dijkstraresult[endNode]['distance'])    
+                    node["distance"] = secondsToTime(node["distance"]) 
 
         if targetVariable == "energy":
             for nodeid, node in dijkstraresult.items():
@@ -483,12 +480,12 @@ async def dijkstra_algorithm_telefericos(
                 if node["distance"] != -1:
                     node["distance"] = f"{node['distance']:.2f} GW"
 
-            # append optimal value to result
-            result["optimalValue"] = f"{dijkstraresult[endNode]['distance']:.2f} GW"
        
-
+        # append optimal value to result
+            result["optimalValue"] = dijkstraresult[endNode]['distance']  
         result["optimalPath"] = create_paths(
             {"edges": {edgeid: 0 for edgeid in dijkstraresult[endNode]["path"]}})
+        result["disabledEdges"] = disabled_edges_ids
 
         return result
     except Exception as e:
