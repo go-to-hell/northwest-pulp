@@ -371,6 +371,9 @@ def secondsToTime(seconds):
     seconds = seconds % 60
     return f"{minutes:02d}:{seconds:02d}"
 
+def secondsToEnergy(seconds, energy_constraint):
+    return WATTAGE / (seconds * energy_constraint)
+
 
 def adjustForEnergy(graph, energy_constraint):
     """
@@ -388,38 +391,55 @@ def adjustForEnergy(graph, energy_constraint):
     
     for nodeid, node in graph.items():
         for neighborid, neighbor in node['neighbors'].items():
-            neighbor['label'] = WATTAGE / (neighbor['label'] * energy_constraint)
+            neighbor['label'] = secondsToEnergy(neighbor['label'], energy_constraint)
 
 
 def adjustForMoney(graph, startNode, cardtype):
     """
+    TODO: there are some narrow cases for which this doesn't work as properly, will fix tommorrow
     Adjust the weights of the graph to consider the cost of the cable car; following this rules:
-    - The first time a line is used, the cost is the price of the card
-    - A transfer happens when the user moves to a station that belongs to a different line that doesn't belong to the previous line they were in
-    - The cost of the transfer is indicated in the card mappings
-    - If a transfer happens between the `celeste` and `blanca` lines, the cost is 0
-    - The cost of moving between stations on the same line is 0
+    - If a station only belongs to a single line, the cost of its outgoing edges is 0
+    - If a station belongs to multiple lines, the cost of its outgoing edges is given by the cards transfer cost
+    - If the station is `Del Poeta` specifically, the cost of its outgoing edges is 0
+    - If the station is the starting station, the cost of its outgoing edges is the base price of the card, this rule overrides the others
     """
-    currentNode = startNode
-    visitedNodes = {currentNode}
 
-    while True:
-        for neighborid, neighbor in graph[currentNode]['neighbors'].items():
-            if neighborid not in visitedNodes:
-                # Check if visiting a neighboring station is a transfer (i.e. the nerighbor belongs to a different line than the start node)
-                if any([line in paradas[graph[currentNode]['name']] for line in paradas[graph[neighborid]['name']]]):
-                    # Check if the transfer is free
-                    if 'celeste' in paradas[graph[currentNode]['name']] and 'blanco' in paradas[graph[neighborid]['name']]:
-                        neighbor['label'] = 0
-                    else:
-                        neighbor['label'] = card_mappings[cardtype]['transfer']
-                else:
-                    neighbor['label'] = 0
-                visitedNodes.add(neighborid)
-                currentNode = neighborid
-                break
-        else:
-            break
+    if cardtype not in card_mappings:
+        raise Exception("Card type not found")
+
+    card = card_mappings[cardtype]
+
+    for nodeid, node in graph.items():
+        for neighborid, neighbor in node['neighbors'].items():
+            print("route from ", node['name'], " to ", graph[neighborid]['name'])
+            if node['name'] == graph[startNode]['name']:
+                print("has to pay card price")
+                neighbor['label'] = card['price']
+            elif node['name'] == "Del Poeta":
+                print("is Del Poeta")
+                neighbor['label'] = 0
+            elif len(paradas[node['name']]) == 1:
+                print("only belongs to one line")
+                neighbor['label'] = 0
+            else:
+                print("belongs to multiple lines")
+                neighbor['label'] = card['transfer']
+
+def formatEdgeMoney(graph, edge, startNode, cardtype):
+    if edge['label'] == "Disabled":
+        return edge
+
+    if edge['source'] == startNode:
+        edge['label'] = f"${card_mappings[cardtype]['price']:.2f}"
+    elif edge['target'] == "Del Poeta":
+        edge['label'] = "$0.00"
+    elif len(paradas[graph[edge['source']]['name']]) == 1:
+        edge['label'] = "$0.00"
+    else:
+        edge['label'] = f"${card_mappings[cardtype]['transfer']:.2f}"
+    return edge
+
+
 
 
 @app.post("/dijkstra/telefericos")
@@ -434,11 +454,27 @@ async def dijkstra_algorithm_telefericos(
     disabledLines: List[str] = []
 ):
     """
-    TODO: Esta función fue generada con IA, se debe completar el código para que funcione correctamente.
-    Según el usuario requiera optimizar por tiempo o por dinero, se debe calcular el costo de los nodos.
-    En el caso de costo por dinero se debe convertir el grafo a un grafo ponderado por el precio de la tarjeta. Esto es última prioridad
-    En el caso de costo por tiempo es necesario al resultado de dijkstra convertir los segundos a un string en formato MM:SS
-    En ambos casos se debe retornar adicionalmente el costo óptimo de la ruta
+    Calcula el camino más corto en un grafo utilizando el algoritmo de Dijkstra.
+    
+    Parámetros:
+        - VEGraph (GraphData): Los datos del grafo que contienen los vértices y las aristas.
+        - startNode (str): El id de nodo de inicio para el cálculo del camino más corto.
+        - endNode (str): El id de nodo final para el cálculo del camino más corto.
+        - maximize (bool, opcional): Indica si se debe maximizar la variable objetivo. Por defecto es False.
+        - cardtype (str, opcional): El tipo de tarjeta a utilizar para los cálculos de costo. Por defecto es "regular". Puede ser cualquiera de ["regular", "student", "senior"].
+        - targetVariable (str, opcional): La variable objetivo para el cálculo del camino más corto. Puede ser "time", "money" o "energy". Por defecto es "time".
+        - energy_constraint (float, opcional): La restricción de energía para el cálculo del camino más corto. Solo aplicable si targetVariable es "energy". Por defecto es None. Debe ser un valor entre 0 y 1.
+        - disabledLines (List[str], opcional): Una lista de líneas a deshabilitar en el grafo. Puede ser cualquiera de ["Azul", "Roja", "Plateada", "Naranja", "Blanco", "Cafe", "Celeste", "Amarillo", "Verde", "Morada"]. Por defecto es [].
+
+    Retorna:
+        - Un objeto JSON con los nodos:
+            - La distancia óptima a ese nodo.
+            - El camino óptimo a ese nodo.
+        - Un objeto JSON con las aristas.
+            - Formateado según la variable objetivo.
+        - El valor óptimo de la variable objetivo.
+        - El camino óptimo. Formateado para v-network-graph
+        - Los ids de las aristas deshabilitadas.
     """
     try:
         print("Convert graph to adjacency list")
@@ -461,24 +497,52 @@ async def dijkstra_algorithm_telefericos(
         dijkstraresult = dijkstra(graph, startNode, maximize)
         # esta es la solución básica de Dijkstra
         result = {"nodes": dijkstraresult}
+        result["edges"] = VEGraph.dict()["edges"]
 
         if targetVariable == "money":
+            print("Converting to currency: Nodes")
             for nodeid, node in dijkstraresult.items():
                 # cast numbers to currency
                 if node["distance"] != -1:
                     node["distance"] = f"${node['distance']:.2f}"
 
+            # format the edges values
+            print("Converting to currency: Edges")
+            for edgeid, edge in result["edges"].items():
+                if edgeid in disabled_edges_ids:
+                    edge["label"] = "Disabled"
+                else:
+                    edge = formatEdgeMoney(graph, edge, startNode, cardtype)
+
         if targetVariable == "time":
+            print("Converting to time: Nodes")
             for nodeid, node in dijkstraresult.items():
                 # cast seconds to MM:SS
                 if node["distance"] != -1:
                     node["distance"] = secondsToTime(node["distance"]) 
 
+            # format the edges values
+            print("Converting to time: Edges")
+            for edgeid, edge in result["edges"].items():
+                if edgeid in disabled_edges_ids:
+                    edge["label"] = "Disabled"
+                else:
+                    edge["label"] = secondsToTime(int(edge['label']))
+
         if targetVariable == "energy":
+            print("Converting to energy: Nodes")
             for nodeid, node in dijkstraresult.items():
                 # cast numbers to energy
                 if node["distance"] != -1:
                     node["distance"] = f"{node['distance']:.2f} GW"
+
+            # format the edges values
+            print("Converting to energy: Edges")
+            for edgeid, edge in result["edges"].items():
+                if edgeid in disabled_edges_ids:
+                    edge["label"] = "Disabled"
+                else:
+                    edge["label"] = f"{secondsToEnergy(int(edge['label']), energy_constraint):.2f} GW"
 
        
         # append optimal value to result
