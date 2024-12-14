@@ -546,7 +546,8 @@ async def dijkstra_algorithm_telefericos(
 
        
         # append optimal value to result
-            result["optimalValue"] = dijkstraresult[endNode]['distance']  
+        result["optimalValue"] = dijkstraresult[endNode]['distance']  
+        print("Optimal value: ", result["optimalValue"])
         result["optimalPath"] = create_paths(
             {"edges": {edgeid: 0 for edgeid in dijkstraresult[endNode]["path"]}})
         result["disabledEdges"] = disabled_edges_ids
